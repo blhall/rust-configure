@@ -14,6 +14,14 @@ pub struct Configuration {
 
 impl Configuration {
 
+    fn valid(&self) -> bool {
+        //look up each item to tests resolving references, want any panics to boil up on init
+        for (prop, _val) in self.properties.iter() {
+            self.get_conf(prop);
+        }
+        true
+    }
+
     pub fn new(name: String) -> Configuration {
         let mut conf = Configuration {
                 name: name,
@@ -21,6 +29,7 @@ impl Configuration {
                 properties: HashMap::new(),
             };
         conf.properties = conf.load_from_file();
+        conf.valid();
         conf
     }
 
@@ -52,7 +61,22 @@ impl Configuration {
     }
 
     pub fn get_conf(&self, name: &String) -> &String {
-        self.properties.get(name).unwrap()
+        //resolves references recursively, else should panic.
+        let temp_value = match self.properties.get(name) {
+            Some(value) => value,
+            None => panic!("Unable to resolve reference ${{{}}}, in conf file {}", name, self.filename())
+        };
+        println!("TempValue: {}", temp_value);
+        let char_vec: Vec<char> = temp_value.chars().collect();
+        if char_vec[0] == '$' {
+            if char_vec[1] == '{' {
+                let len = char_vec.len();
+                let new_key = &temp_value[2..len-1];
+                println!("New key: {}", new_key);
+                return self.get_conf(&String::from(new_key));
+            }
+        }
+        temp_value
     }
 }
 
@@ -63,8 +87,15 @@ mod tests {
     #[test]
     fn conf_test() {
         let test_conf = Configuration::new(String::from("test"));
-        assert_eq!(test_conf.count(), 1);
+        assert!(test_conf.count() > 0);
 
         assert_eq!(test_conf.get_conf(&String::from("test.key")), "test.value");
+        assert_eq!(test_conf.get_conf(&String::from("test.key2")), "test.value");
+    }
+
+    #[test]
+    #[should_panic]
+    fn bad_conf_test() {
+        Configuration::new(String::from("test-bad"));
     }
 }
